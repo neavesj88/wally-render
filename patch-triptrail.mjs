@@ -1,0 +1,104 @@
+/**
+ * Local modifications to the TripTrail clone (MIT, © 2026 Fangyuan Lin).
+ *
+ * Each patch asserts its anchor text first, so if upstream changes the build
+ * fails loudly instead of silently rendering unpatched.
+ */
+import fs from "node:fs";
+
+const FILE = process.argv[2] || "triptrail/app.js";
+let src = fs.readFileSync(FILE, "utf8");
+const applied = [];
+
+function patch(name, find, replace) {
+  if (!src.includes(find)) {
+    console.error(`PATCH FAILED: "${name}" — anchor not found. Upstream changed; re-check this patch.`);
+    process.exit(1);
+  }
+  src = src.replace(find, replace);
+  applied.push(name);
+}
+
+/* ---------------------------------------------------------------
+ * 1. Per-frame settle cap.
+ * Every exported frame waits this long for the map to finish drawing, then
+ * copies the canvas regardless. 900ms assumes a GPU; under SwiftShader a frame
+ * takes seconds, so it expired every time and grabbed the canvas mid-update —
+ * the GL trail lagged the canvas overlay, putting pins and the plane off route.
+ * ------------------------------------------------------------- */
+patch(
+  "frame-settle cap 900ms -> 20s",
+  "function mapFrameSettled(maxWaitMs = 900) {",
+  "function mapFrameSettled(maxWaitMs = 20000) {",
+);
+
+/* ---------------------------------------------------------------
+ * 2. Camera path smoothing.
+ * The camera centre is sampled straight off the drawn polyline, and
+ * trailPointAt interpolates linearly between vertices. A road route from OSRM
+ * has a vertex at every bend, so the camera path is piecewise-linear with a
+ * hard corner at each one — visible as jerk when zoomed in. A plane leg is a
+ * smooth great circle, which is why it only shows on roads.
+ *
+ * Smooth a separate copy of the coordinates for the camera only. The trail
+ * itself keeps tracing the road exactly, so nothing about the drawn route
+ * changes — only what the camera follows.
+ * ------------------------------------------------------------- */
+patch(
+  "add smoothed camera path helpers",
+  "/* ============================================================ tile prewarm */",
+  `/* ---- camera path smoothing (local patch) ---- */
+
+// Moving average over a window that scales with the point count, so a dense
+// road route is smoothed more than a sparse one. Endpoints stay anchored so the
+// camera still arrives exactly at each stop.
+function smoothCoords(coords) {
+  const n = coords.length;
+  if (n < 5) return coords.map(c => c.slice());
+  const half = Math.max(2, Math.min(20, Math.round(n / 50)));
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const lo = Math.max(0, i - half), hi = Math.min(n - 1, i + half);
+    let sx = 0, sy = 0;
+    for (let j = lo; j <= hi; j++) { sx += coords[j][0]; sy += coords[j][1]; }
+    const count = hi - lo + 1;
+    out.push([sx / count, sy / count]);
+  }
+  out[0] = coords[0].slice();
+  out[n - 1] = coords[n - 1].slice();
+  return out;
+}
+
+// Mirrors trailPointAt but reads the smoothed array. Shares anim.mcum, which is
+// valid because camCoords is index-aligned with fullCoords.
+function camPointAt(frac) {
+  if (!anim.camCoords || anim.camCoords.length !== anim.fullCoords.length) return trailPointAt(frac);
+  const cum = anim.mcum, d = clamp(frac, 0, 1) * anim.mtotal;
+  let lo = 1, hi = cum.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < d) lo = mid + 1; else hi = mid; }
+  const seg = cum[lo] - cum[lo - 1] || 1, t = (d - cum[lo - 1]) / seg;
+  const a = anim.camCoords[lo - 1], b = anim.camCoords[lo];
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+}
+
+/* ============================================================ tile prewarm */`,
+);
+
+patch(
+  "build the smoothed path alongside fullCoords",
+  `  anim.mcum = mcum;
+  anim.mtotal = mcum[mcum.length - 1] || 1;`,
+  `  anim.mcum = mcum;
+  anim.mtotal = mcum[mcum.length - 1] || 1;
+  anim.camCoords = smoothCoords(anim.fullCoords);   // local patch: camera only`,
+);
+
+patch(
+  "camera follows the smoothed path",
+  "    const lead = trailPointAt(clamp(frac + 0.2 * wave * span, 0, 1));",
+  "    const lead = camPointAt(clamp(frac + 0.2 * wave * span, 0, 1));",
+);
+
+fs.writeFileSync(FILE, src);
+console.log(`Patched ${FILE}:`);
+for (const a of applied) console.log(`  - ${a}`);

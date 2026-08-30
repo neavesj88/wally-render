@@ -37,16 +37,7 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/Fangyuan025/triptrail.git triptrail
 
-          # Each exported frame waits up to 900ms for the map to finish drawing
-          # and then copies the canvas regardless. That cap assumes a GPU: under
-          # SwiftShader a frame takes seconds, so it expires every time and grabs
-          # the canvas mid-update — the GL trail ends up a step behind the canvas
-          # overlay, which is why pins and the plane drifted off the route.
-          # Raise it so slow frames are waited out rather than truncated.
-          grep -q 'function mapFrameSettled(maxWaitMs = 900)' triptrail/app.js \
-            || { echo "upstream changed mapFrameSettled — re-check this patch"; exit 1; }
-          sed -i 's/function mapFrameSettled(maxWaitMs = 900)/function mapFrameSettled(maxWaitMs = 20000)/' triptrail/app.js
-          grep -q 'maxWaitMs = 20000' triptrail/app.js && echo "frame-settle cap raised to 20s"
+          node patch-triptrail.mjs triptrail/app.js
 
           cd triptrail && python3 -m http.server 8080 &
           for i in $(seq 1 30); do
