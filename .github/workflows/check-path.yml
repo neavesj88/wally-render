@@ -1,0 +1,30 @@
+name: Check upload path reachable
+
+# Is Cloudflare letting a datacenter IP reach the render endpoint?
+#
+# Deliberately sends NO token. A 401 in JSON is a pass: it means the request
+# reached the app and the app rejected it. An HTML interstitial means Cloudflare
+# stopped it before the app ever saw it. Needs no secret and uploads nothing.
+on: workflow_dispatch
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST to /api/render/upload-video
+        run: |
+          code=$(curl -s -o body.txt -w "%{http_code}" -X POST https://neaves.au/api/render/upload-video)
+          echo "HTTP $code"
+          echo "--- first 200 bytes ---"
+          head -c 200 body.txt; echo
+          echo "-----------------------"
+          if grep -qE "Just a moment|cf_chl_opt" body.txt; then
+            echo "RESULT: BLOCKED — Cloudflare challenged the runner. The skip rule is not covering this."
+            exit 1
+          fi
+          if [ "$code" = "401" ]; then
+            echo "RESULT: PASS — reached the app, which rejected the missing token. Cloudflare is out of the way."
+            exit 0
+          fi
+          echo "RESULT: UNEXPECTED — reached something, but not the 401 we expected."
+          exit 1
