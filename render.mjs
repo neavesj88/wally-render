@@ -25,6 +25,19 @@ const subtitle = payload.subtitle || "";
 const aspect = payload.aspect || "9:16";
 const globe = payload.globe !== false && stops.some(s => s.mode === "plane");
 
+/** Dark Matter by default: satellite is TripTrail's own default and clashes
+ *  with the site's dark theme. Any value from its style menu works. */
+const STYLES = {
+  dark: "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+  eclipse: "https://tiles.versatiles.org/assets/styles/eclipse/style.json",
+  voyager: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+  positron: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+  fiord: "https://tiles.openfreemap.org/styles/fiord",
+  liberty: "https://tiles.openfreemap.org/styles/liberty",
+  satellite: "satellite",
+};
+const style = STYLES[payload.style || "dark"] || payload.style || STYLES.dark;
+
 if (stops.length < 2) {
   console.error("Need at least two stops. Got:", stops.length);
   process.exit(1);
@@ -35,7 +48,7 @@ const started = Date.now();
 const mins = () => ((Date.now() - started) / 60000).toFixed(1) + "m";
 
 console.log(`Rendering ${stops.length} stops: ${stops.map(s => s.name).join(" → ")}`);
-console.log(`  aspect ${aspect}, globe ${globe}, accent ${ACCENT}`);
+console.log(`  aspect ${aspect}, globe ${globe}, accent ${ACCENT}, style ${payload.style || "dark"}`);
 
 const browser = await chromium.launch({
   headless: true,
@@ -72,7 +85,7 @@ console.log(`[${mins()}] app loaded`);
 // Inject route and settings.
 // `route`, not `stops` — a parameter named `stops` would shadow the page's own
 // binding and the assignment below would go nowhere.
-const injected = await page.evaluate(({ route, title, subtitle, aspect, globe, accent }) => {
+const injected = await page.evaluate(({ route, title, subtitle, aspect, globe, accent, style }) => {
   stops = route.map(s => ({ ...s, id: id() }));
   afterStopsChange();
 
@@ -87,6 +100,7 @@ const injected = await page.evaluate(({ route, title, subtitle, aspect, globe, a
   set("#inp-subtitle", subtitle, "input");
   set("#chk-globe", globe, "change");
   set("#sel-aspect", aspect, "change");
+  set("#sel-style", style, "change");
   set("#sel-format", "mp4", "change");
 
   return {
@@ -94,7 +108,7 @@ const injected = await page.evaluate(({ route, title, subtitle, aspect, globe, a
     count: document.querySelector("#stop-count").textContent,
     canvas: (() => { const c = document.querySelector("#map canvas"); return c ? `${c.width}x${c.height}` : "none"; })(),
   };
-}, { route: stops, title, subtitle, aspect, globe, accent: ACCENT });
+}, { route: stops, title, subtitle, aspect, globe, accent: ACCENT, style });
 
 console.log(`[${mins()}] injected ${injected.count} stops: ${injected.stops.join(", ")}`);
 console.log(`  render canvas ${injected.canvas} — frame cost scales with this`);
@@ -102,6 +116,13 @@ if (String(injected.count) !== String(stops.length)) {
   console.error("Injection did not take — sidebar shows", injected.count);
   process.exit(1);
 }
+
+// Changing the style calls setStyle(..., {diff:false}), which tears the whole
+// style down and re-adds the route layers. Recording before that settles would
+// capture a half-built basemap.
+await page.waitForFunction(() => map.isStyleLoaded() && map.loaded(), null, { timeout: 120000 });
+await page.waitForTimeout(3000);
+console.log(`[${mins()}] basemap settled`);
 
 // Record. The offline path steps frames deterministically, so nothing here
 // depends on the tab being visible.
