@@ -1,18 +1,15 @@
 name: Render travel animation
 
-# Renders a TripTrail route on GitHub's hardware and pushes the clip to
-# neaves.au. Triggered by hand from the Actions tab, or by the site itself
-# via repository_dispatch.
+# Renders a TripTrail route on GitHub's hardware and publishes the clip as a
+# release. The site pulls it from there when you ask it to — Cloudflare
+# challenges datacenter IPs, so pushing into the site does not work, while
+# nothing challenges the server fetching outbound.
 on:
   workflow_dispatch:
     inputs:
       route:
         description: 'Route JSON: {"title":…,"stops":[{"name":…,"lng":…,"lat":…,"mode":…}]}'
         required: true
-        type: string
-      post_id:
-        description: "Travel post id to attach the clip to (optional)"
-        required: false
         type: string
   repository_dispatch:
     types: [render-route]
@@ -21,6 +18,9 @@ jobs:
   render:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # Needed to create the release the site collects from.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -58,8 +58,14 @@ jobs:
           path: out/route.mp4
           retention-days: 30
 
-      - name: Publish to neaves.au
+      - name: Publish release
         env:
-          RENDER_TOKEN: ${{ secrets.RENDER_TOKEN }}
-          POST_ID: ${{ inputs.post_id || github.event.client_payload.post_id }}
-        run: node upload.mjs
+          GH_TOKEN: ${{ github.token }}
+          ROUTE_JSON: ${{ inputs.route || toJSON(github.event.client_payload.route) }}
+        run: |
+          TITLE=$(node -e "process.stdout.write(JSON.parse(process.env.ROUTE_JSON||'{}').title||'Route')")
+          STAMP=$(date -u +'%Y-%m-%d %H:%M UTC')
+          gh release create "render-${{ github.run_number }}" out/route.mp4 \
+            --title "$TITLE" \
+            --notes "Rendered $STAMP from run ${{ github.run_number }}."
+          echo "Published release render-${{ github.run_number }} — collect it from the Wally editor."
