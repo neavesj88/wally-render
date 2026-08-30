@@ -49,24 +49,31 @@ patch(
   "/* ============================================================ tile prewarm */",
   `/* ---- camera path smoothing (local patch) ---- */
 
-// Moving average over a window that scales with the point count, so a dense
-// road route is smoothed more than a sparse one. Endpoints stay anchored so the
-// camera still arrives exactly at each stop.
+// Three passes of a moderate window rather than one wide one. Repeated box
+// filtering approximates a Gaussian, which flattens the *rate of turn* — what
+// reads as jerk — much more than it displaces the path itself. One wide window
+// would soften just as much but cut corners off switchbacks, dragging the
+// camera away from the road and pushing the marker toward the frame edge.
+// Endpoints stay anchored so the camera still arrives exactly at each stop.
 function smoothCoords(coords) {
   const n = coords.length;
   if (n < 5) return coords.map(c => c.slice());
-  const half = Math.max(2, Math.min(20, Math.round(n / 50)));
-  const out = [];
-  for (let i = 0; i < n; i++) {
-    const lo = Math.max(0, i - half), hi = Math.min(n - 1, i + half);
-    let sx = 0, sy = 0;
-    for (let j = lo; j <= hi; j++) { sx += coords[j][0]; sy += coords[j][1]; }
-    const count = hi - lo + 1;
-    out.push([sx / count, sy / count]);
+  const half = Math.max(2, Math.min(24, Math.round(n / 40)));
+  let cur = coords.map(c => c.slice());
+  for (let pass = 0; pass < 3; pass++) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const lo = Math.max(0, i - half), hi = Math.min(n - 1, i + half);
+      let sx = 0, sy = 0;
+      for (let j = lo; j <= hi; j++) { sx += cur[j][0]; sy += cur[j][1]; }
+      const count = hi - lo + 1;
+      out.push([sx / count, sy / count]);
+    }
+    out[0] = coords[0].slice();
+    out[n - 1] = coords[n - 1].slice();
+    cur = out;
   }
-  out[0] = coords[0].slice();
-  out[n - 1] = coords[n - 1].slice();
-  return out;
+  return cur;
 }
 
 // Mirrors trailPointAt but reads the smoothed array. Shares anim.mcum, which is

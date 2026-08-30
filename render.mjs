@@ -36,7 +36,7 @@ const globe = payload.globe !== false && hasFlight;
  * pace the camera hurries through the bends. A flight crossing a globe already
  * reads unhurried, so those stay at 1.
  */
-const pace = payload.pace ?? (hasFlight ? 1 : 0.6);
+const pace = payload.pace ?? (hasFlight ? 1 : 0.45);
 
 /** Dark Matter by default: satellite is TripTrail's own default and clashes
  *  with the site's dark theme. Any value from its style menu works. */
