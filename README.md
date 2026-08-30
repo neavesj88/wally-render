@@ -30,9 +30,14 @@ Globe view turns on automatically when any leg is a flight.
 
 ## Publishing
 
-Add a repository secret `NEAVES_ADMIN_PASSWORD` (the site's admin password) and
-the clip uploads itself. Pass `post_id` to attach it to a specific travel post.
-Without the secret the render still runs and the clip is a build artifact.
+Add a repository secret  matching the server's, and the clip
+uploads itself to . Pass  to attach it to a
+travel post. Without the secret the render still runs and the clip is an artifact.
+
+That endpoint exists because Cloudflare's managed challenge blocks
+ from datacenter IPs — correctly, since that is the brute-force
+surface. A WAF skip rule is scoped to this one path, and the token can do
+nothing except attach a video.
 
 ## Third-party code
 

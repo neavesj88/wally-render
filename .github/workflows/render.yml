@@ -60,6 +60,6 @@ jobs:
 
       - name: Publish to neaves.au
         env:
-          NEAVES_ADMIN_PASSWORD: ${{ secrets.NEAVES_ADMIN_PASSWORD }}
+          RENDER_TOKEN: ${{ secrets.RENDER_TOKEN }}
           POST_ID: ${{ inputs.post_id || github.event.client_payload.post_id }}
         run: node upload.mjs

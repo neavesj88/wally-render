@@ -1,20 +1,23 @@
 /**
- * Pushes the finished clip to neaves.au.
+ * Publishes the finished clip to neaves.au.
  *
- * Admin tokens are 2h JWTs, so a stored token would be stale by the next run —
- * the password is the secret, and this trades it for a token per render.
- * Skips cleanly when no secret is configured, leaving the CI artifact as the
- * way to collect the video by hand.
+ * Uses a scoped render token against /api/render/upload-video rather than the
+ * admin password against /api/admin/login. Two reasons: Cloudflare's managed
+ * challenge blocks /api/admin/* from datacenter IPs (correctly — that is the
+ * brute-force surface), and CI should not hold a credential that can do
+ * anything beyond attaching a video.
+ *
+ * Skips cleanly when no token is set, leaving the CI artifact to collect by hand.
  */
 import fs from "node:fs";
 
 const SITE = process.env.SITE_URL || "https://neaves.au";
-const PASSWORD = process.env.NEAVES_ADMIN_PASSWORD;
+const TOKEN = process.env.RENDER_TOKEN;
 const FILE = process.env.VIDEO_PATH || "out/route.mp4";
 const POST_ID = process.env.POST_ID || "";
 
-if (!PASSWORD) {
-  console.log("NEAVES_ADMIN_PASSWORD not set — skipping upload.");
+if (!TOKEN) {
+  console.log("RENDER_TOKEN not set — skipping upload.");
   console.log("Download the clip from this run's artifacts instead.");
   process.exit(0);
 }
@@ -23,44 +26,29 @@ if (!fs.existsSync(FILE)) {
   process.exit(1);
 }
 
-const login = await fetch(`${SITE}/api/admin/login`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ password: PASSWORD }),
-});
-if (!login.ok) {
-  console.error(`Login failed: ${login.status} ${await login.text()}`);
-  process.exit(1);
-}
-const { token } = await login.json();
-if (!token) { console.error("Login returned no token"); process.exit(1); }
-console.log("Authenticated.");
-
 const form = new FormData();
 form.append("video", new Blob([fs.readFileSync(FILE)], { type: "video/mp4" }), "route.mp4");
+if (POST_ID) form.append("postId", POST_ID);
 
-const up = await fetch(`${SITE}/api/admin/travel/upload-video`, {
+const res = await fetch(`${SITE}/api/render/upload-video`, {
   method: "POST",
-  headers: { Authorization: `Bearer ${token}` },
+  headers: { Authorization: `Bearer ${TOKEN}` },
   body: form,
 });
-if (!up.ok) {
-  console.error(`Upload failed: ${up.status} ${await up.text()}`);
+
+const body = await res.text();
+if (!res.ok) {
+  // A Cloudflare challenge comes back as an HTML page, not JSON — say so plainly
+  // rather than dumping the whole interstitial into the log.
+  if (body.includes("Just a moment") || body.includes("cf_chl_opt")) {
+    console.error(`Blocked by Cloudflare (${res.status}). The WAF skip rule for`);
+    console.error("/api/render/upload-video is missing or not matching.");
+  } else {
+    console.error(`Upload failed: ${res.status} ${body.slice(0, 300)}`);
+  }
   process.exit(1);
 }
-const { videoUrl } = await up.json();
-console.log(`Uploaded: ${SITE}${videoUrl}`);
 
-// Attach it to the post that asked for this render, when one was named.
-if (POST_ID) {
-  // PUT, not PATCH — the route validates with insertTravelPostSchema.partial(),
-  // so a single-field body is accepted.
-  const patch = await fetch(`${SITE}/api/admin/travel/posts/${POST_ID}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ videoUrl }),
-  });
-  console.log(patch.ok
-    ? `Attached to post ${POST_ID}.`
-    : `Uploaded, but attaching to post ${POST_ID} failed: ${patch.status}`);
-}
+const out = JSON.parse(body);
+console.log(`Uploaded: ${SITE}${out.videoUrl}`);
+console.log(out.attached ? `Attached to post ${out.postId}.` : "Not attached — no post id given.");
