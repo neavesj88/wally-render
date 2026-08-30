@@ -25,7 +25,18 @@ const subtitle = payload.subtitle || "";
 // Landscape by default. A globe cropped into a portrait frame loses its left
 // and right edges and reads as squashed — 16:9 gives the sphere room.
 const aspect = payload.aspect || "16:9";
-const globe = payload.globe !== false && stops.some(s => s.mode === "plane");
+const hasFlight = stops.some(s => s.mode === "plane");
+const globe = payload.globe !== false && hasFlight;
+
+/**
+ * Pace divides every segment duration, so lower is slower. The slider runs
+ * 0.4–2.2 and TripTrail labels anything under 0.8 "Cinematic".
+ *
+ * Ground routes default slow: a road leg covers little distance, so at normal
+ * pace the camera hurries through the bends. A flight crossing a globe already
+ * reads unhurried, so those stay at 1.
+ */
+const pace = payload.pace ?? (hasFlight ? 1 : 0.6);
 
 /** Dark Matter by default: satellite is TripTrail's own default and clashes
  *  with the site's dark theme. Any value from its style menu works. */
@@ -80,7 +91,7 @@ const context = await browser.newContext({
   deviceScaleFactor: 1,
   acceptDownloads: true,
 });
-console.log(`  aspect ${aspect} (stage ${stageW}x${stageH}), globe ${globe}, accent ${ACCENT}, style ${payload.style || "dark"}`);
+console.log(`  aspect ${aspect} (stage ${stageW}x${stageH}), globe ${globe}, accent ${ACCENT}, style ${payload.style || "dark"}, pace ${pace}`);
 const page = await context.newPage();
 page.on("console", m => {
   const t = m.text();
@@ -94,7 +105,7 @@ console.log(`[${mins()}] app loaded`);
 // Inject route and settings.
 // `route`, not `stops` — a parameter named `stops` would shadow the page's own
 // binding and the assignment below would go nowhere.
-const injected = await page.evaluate(({ route, title, subtitle, aspect, globe, accent, style }) => {
+const injected = await page.evaluate(({ route, title, subtitle, aspect, globe, accent, style, pace }) => {
   stops = route.map(s => ({ ...s, id: id() }));
   afterStopsChange();
 
@@ -110,14 +121,16 @@ const injected = await page.evaluate(({ route, title, subtitle, aspect, globe, a
   set("#chk-globe", globe, "change");
   set("#sel-aspect", aspect, "change");
   set("#sel-style", style, "change");
+  set("#rng-pace", String(pace), "input");
   set("#sel-format", "mp4", "change");
 
   return {
     stops: stops.map(s => `${s.name}/${s.mode}`),
     count: document.querySelector("#stop-count").textContent,
     canvas: (() => { const c = document.querySelector("#map canvas"); return c ? `${c.width}x${c.height}` : "none"; })(),
+    paceLabel: document.querySelector("#pace-val").textContent,
   };
-}, { route: stops, title, subtitle, aspect, globe, accent: ACCENT, style });
+}, { route: stops, title, subtitle, aspect, globe, accent: ACCENT, style, pace });
 
 console.log(`[${mins()}] injected ${injected.count} stops: ${injected.stops.join(", ")}`);
 console.log(`  render canvas ${injected.canvas} — frame cost scales with this`);
