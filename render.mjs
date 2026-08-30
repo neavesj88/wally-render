@@ -48,11 +48,15 @@ const browser = await chromium.launch({
   ],
 });
 
-// A tall viewport so a 9:16 stage gets real pixels; deviceScaleFactor doubles
-// the canvas, and TripTrail downsamples to a 1920 long edge, which supersamples.
+// Pixel count is everything here: with no GPU, every frame is rasterised in
+// software, so cost scales directly with canvas area. deviceScaleFactor 2 on
+// this viewport meant 2400x3000 = 7.2M pixels/frame and ~5.7s per frame.
+// At dsf 1 the stage lands near 1080x1920 — the Instagram target, and the size
+// TripTrail would downsample to anyway, so this costs nothing in output
+// quality. The sidebar eats ~300px of width, hence the extra.
 const context = await browser.newContext({
-  viewport: { width: 1200, height: 1500 },
-  deviceScaleFactor: 2,
+  viewport: { width: 1420, height: 1960 },
+  deviceScaleFactor: 1,
   acceptDownloads: true,
 });
 const page = await context.newPage();
@@ -88,10 +92,12 @@ const injected = await page.evaluate(({ route, title, subtitle, aspect, globe, a
   return {
     stops: stops.map(s => `${s.name}/${s.mode}`),
     count: document.querySelector("#stop-count").textContent,
+    canvas: (() => { const c = document.querySelector("#map canvas"); return c ? `${c.width}x${c.height}` : "none"; })(),
   };
 }, { route: stops, title, subtitle, aspect, globe, accent: ACCENT });
 
 console.log(`[${mins()}] injected ${injected.count} stops: ${injected.stops.join(", ")}`);
+console.log(`  render canvas ${injected.canvas} — frame cost scales with this`);
 if (String(injected.count) !== String(stops.length)) {
   console.error("Injection did not take — sidebar shows", injected.count);
   process.exit(1);
@@ -99,7 +105,7 @@ if (String(injected.count) !== String(stops.length)) {
 
 // Record. The offline path steps frames deterministically, so nothing here
 // depends on the tab being visible.
-const downloadPromise = page.waitForEvent("download", { timeout: 60 * 60 * 1000 });
+const downloadPromise = page.waitForEvent("download", { timeout: 85 * 60 * 1000 });
 await page.click("#btn-record");
 console.log(`[${mins()}] recording started (prewarming tiles, then encoding)…`);
 
@@ -111,7 +117,7 @@ const progress = setInterval(async () => {
   } catch { /* page busy */ }
 }, 30000);
 
-await page.waitForSelector("#btn-download:not(.hidden)", { timeout: 60 * 60 * 1000 });
+await page.waitForSelector("#btn-download:not(.hidden)", { timeout: 85 * 60 * 1000 });
 clearInterval(progress);
 
 const label = await page.$eval("#dl-label", el => el.textContent).catch(() => "");
