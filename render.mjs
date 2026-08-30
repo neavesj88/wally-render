@@ -22,7 +22,9 @@ const payload = JSON.parse(process.env.ROUTE_JSON || "{}");
 const stops = payload.stops || [];
 const title = payload.title || "Where's Wally";
 const subtitle = payload.subtitle || "";
-const aspect = payload.aspect || "9:16";
+// Landscape by default. A globe cropped into a portrait frame loses its left
+// and right edges and reads as squashed — 16:9 gives the sphere room.
+const aspect = payload.aspect || "16:9";
 const globe = payload.globe !== false && stops.some(s => s.mode === "plane");
 
 /** Dark Matter by default: satellite is TripTrail's own default and clashes
@@ -48,7 +50,6 @@ const started = Date.now();
 const mins = () => ((Date.now() - started) / 60000).toFixed(1) + "m";
 
 console.log(`Rendering ${stops.length} stops: ${stops.map(s => s.name).join(" → ")}`);
-console.log(`  aspect ${aspect}, globe ${globe}, accent ${ACCENT}, style ${payload.style || "dark"}`);
 
 const browser = await chromium.launch({
   headless: true,
@@ -61,17 +62,25 @@ const browser = await chromium.launch({
   ],
 });
 
-// Pixel count is everything here: with no GPU, every frame is rasterised in
-// software, so cost scales directly with canvas area. deviceScaleFactor 2 on
-// this viewport meant 2400x3000 = 7.2M pixels/frame and ~5.7s per frame.
-// At dsf 1 the stage lands near 1080x1920 — the Instagram target, and the size
-// TripTrail would downsample to anyway, so this costs nothing in output
-// quality. The sidebar eats ~300px of width, hence the extra.
+// The window has to suit the aspect, or layoutStage() fits the stage to the
+// wrong dimension and the map ends up far smaller than intended.
+//
+// Pixel count is everything here: with no GPU every frame is rasterised in
+// software, so cost scales with canvas area. deviceScaleFactor 2 once meant
+// 7.2M pixels/frame and ~5.7s per frame. At dsf 1 with a 1920 long edge it is
+// ~2M either way, so landscape costs no more than portrait did.
+const [aspectW, aspectH] = aspect.split(":").map(Number);
+const LONG_EDGE = 1920;
+const stageW = aspectW >= aspectH ? LONG_EDGE : Math.round((LONG_EDGE * aspectW) / aspectH);
+const stageH = aspectW >= aspectH ? Math.round((LONG_EDGE * aspectH) / aspectW) : LONG_EDGE;
+
 const context = await browser.newContext({
-  viewport: { width: 1420, height: 1960 },
+  // Sidebar takes ~300px of width; the toolbar and padding ~180px of height.
+  viewport: { width: stageW + 340, height: stageH + 200 },
   deviceScaleFactor: 1,
   acceptDownloads: true,
 });
+console.log(`  aspect ${aspect} (stage ${stageW}x${stageH}), globe ${globe}, accent ${ACCENT}, style ${payload.style || "dark"}`);
 const page = await context.newPage();
 page.on("console", m => {
   const t = m.text();

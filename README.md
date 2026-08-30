@@ -17,7 +17,7 @@ emitted. See `probe.mjs`.
 Actions → **Render travel animation** → Run workflow, with a route like:
 
 ```json
-{"title":"Perth to Munich","aspect":"9:16","stops":[
+{"title":"Perth to Munich","aspect":"16:9","stops":[
   {"name":"Perth","lng":115.8613,"lat":-31.9523,"mode":"plane"},
   {"name":"Dubai","lng":55.2708,"lat":25.2048,"mode":"plane"},
   {"name":"München","lng":11.582,"lat":48.1351,"mode":"plane"}]}
