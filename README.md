@@ -30,14 +30,21 @@ Globe view turns on automatically when any leg is a flight.
 
 ## Publishing
 
-Add a repository secret  matching the server's, and the clip
-uploads itself to . Pass  to attach it to a
+Add a repository secret `RENDER_TOKEN` matching the server's, and the clip
+uploads itself to `/api/render/upload-video`. Pass `post_id` to attach it to a
 travel post. Without the secret the render still runs and the clip is an artifact.
 
 That endpoint exists because Cloudflare's managed challenge blocks
- from datacenter IPs — correctly, since that is the brute-force
+`/api/admin/*` from datacenter IPs — correctly, since that is the brute-force
 surface. A WAF skip rule is scoped to this one path, and the token can do
 nothing except attach a video.
+
+The rule to add in Cloudflare (Security → WAF → Custom rules), as **Skip →
+Managed Challenge**:
+
+```
+(http.host eq "neaves.au" and http.request.uri.path eq "/api/render/upload-video")
+```
 
 ## Third-party code
 
