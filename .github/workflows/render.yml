@@ -1,0 +1,62 @@
+name: Render travel animation
+
+# Renders a TripTrail route on GitHub's hardware and pushes the clip to
+# neaves.au. Triggered by hand from the Actions tab, or by the site itself
+# via repository_dispatch.
+on:
+  workflow_dispatch:
+    inputs:
+      route:
+        description: 'Route JSON: {"title":…,"stops":[{"name":…,"lng":…,"lat":…,"mode":…}]}'
+        required: true
+        type: string
+      post_id:
+        description: "Travel post id to attach the clip to (optional)"
+        required: false
+        type: string
+  repository_dispatch:
+    types: [render-route]
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+
+      # TripTrail is MIT (© 2026 Fangyuan Lin). Served locally so the render
+      # never leans on the author's own hosting.
+      - name: Fetch and serve TripTrail
+        run: |
+          git clone --depth 1 https://github.com/Fangyuan025/triptrail.git triptrail
+          cd triptrail && python3 -m http.server 8080 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8080/ >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://localhost:8080/ >/dev/null || { echo "server never came up"; exit 1; }
+
+      - name: Render
+        env:
+          ROUTE_JSON: ${{ inputs.route || toJSON(github.event.client_payload.route) }}
+          TRIPTRAIL_URL: http://localhost:8080
+        run: node render.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: route-animation
+          path: out/route.mp4
+          retention-days: 30
+
+      - name: Publish to neaves.au
+        env:
+          NEAVES_ADMIN_PASSWORD: ${{ secrets.NEAVES_ADMIN_PASSWORD }}
+          POST_ID: ${{ inputs.post_id || github.event.client_payload.post_id }}
+        run: node upload.mjs
