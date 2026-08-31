@@ -120,6 +120,36 @@ patch(
   "    const lead = camPointAt(clamp(frac + 0.2 * wave * span, 0, 1));",
 );
 
+
+/* ---------------------------------------------------------------
+ * 3. Leg transition and ground-leg duration.
+ *
+ * Each leg's zoom comes from cameraForBounds of that leg alone, so a 25km drive
+ * sits near zoom 10 and a 3900km flight near zoom 3. The approach segment that
+ * moves between them is clamped to 950ms, ramming a seven-level zoom change
+ * through in under a second — and the pace slider cannot lengthen it because
+ * the clamp caps the result. Scale it with the size of the change instead.
+ *
+ * Separately, a leg's travel time is clamp(2200 + km*1.1, 2200, 7000), so every
+ * drive under ~450km lands on the 2200ms floor no matter how slow the pace. A
+ * higher floor for ground legs is the only way to give them room.
+ * ------------------------------------------------------------- */
+patch(
+  "scale the approach to the zoom change",
+  "    add('approach', clamp(750 / p, 350, 950), { a: prevCam, b: startCam, caption, reached: i + 1 });",
+  `    const dz = Math.abs((startCam.zoom || 0) - (prevCam.zoom || 0));   // local patch
+    add('approach', clamp((750 + dz * 250) / p, 350, 4000), { a: prevCam, b: startCam, caption, reached: i + 1 });`,
+);
+
+patch(
+  "give ground legs a longer floor",
+  "    add('travel', clamp(2200 + leg.dist * 1.1, 2200, 7000) / p, { leg: i, caption, pitchCruise, pitchMax, reached: i + 1 });",
+  `    // local patch: a short drive otherwise sits on the 2200ms floor whatever
+    // the pace, which is why ground legs still felt rushed at the slider's end.
+    const floorMs = leg.modeKey === 'plane' ? 2200 : 4000;
+    add('travel', clamp(floorMs + leg.dist * 1.1, floorMs, 7000) / p, { leg: i, caption, pitchCruise, pitchMax, reached: i + 1 });`,
+);
+
 fs.writeFileSync(FILE, src);
 console.log(`Patched ${FILE}:`);
 for (const a of applied) console.log(`  - ${a}`);
