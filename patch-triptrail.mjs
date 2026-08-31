@@ -142,12 +142,19 @@ patch(
 );
 
 patch(
-  "give ground legs a longer floor",
+  "give ground legs room, and weight them by distance",
   "    add('travel', clamp(2200 + leg.dist * 1.1, 2200, 7000) / p, { leg: i, caption, pitchCruise, pitchMax, reached: i + 1 });",
-  `    // local patch: a short drive otherwise sits on the 2200ms floor whatever
-    // the pace, which is why ground legs still felt rushed at the slider's end.
-    const floorMs = leg.modeKey === 'plane' ? 2200 : 4000;
-    add('travel', clamp(floorMs + leg.dist * 1.1, floorMs, 7000) / p, { leg: i, caption, pitchCruise, pitchMax, reached: i + 1 });`,
+  `    // local patch. Upstream is clamp(2200 + km*1.1, 2200, 7000): the per-km
+    // term is so small that 750km earns only 1.36x the screen time of 25km, and
+    // the 2200ms floor swallows anything short. Ground legs get a higher floor,
+    // a per-km weight that actually registers, and headroom above 7000ms so a
+    // long drive is not capped at the same value as a moderate one. Flights are
+    // left exactly as upstream had them.
+    const isPlane = leg.modeKey === 'plane';
+    const floorMs = isPlane ? 2200 : 4000;
+    const perKm = isPlane ? 1.1 : 4;
+    const capMs = isPlane ? 7000 : 8000;
+    add('travel', clamp(floorMs + leg.dist * perKm, floorMs, capMs) / p, { leg: i, caption, pitchCruise, pitchMax, reached: i + 1 });`,
 );
 
 fs.writeFileSync(FILE, src);
