@@ -33,12 +33,13 @@ const globe = payload.globe !== false && hasFlight;
  * Pace divides every segment duration, so lower is slower. The slider runs
  * 0.4-2.2 and TripTrail labels anything under 0.8 "Cinematic".
  *
- * Keyed on ground legs, not flights. A short drive gets TripTrail's floor of
- * 2200ms however far it goes, so at normal pace it is over in two seconds — and
- * keying on flights meant one flight leg rushed every drive in the same trip.
- * A flight rendered slowly just reads as cinematic, so erring slow is safe.
+ * TripTrail has one global pace, so a trip mixing modes cannot have both. The
+ * three cases:
+ *   ground only  0.40  drives need room; they are what looks rushed
+ *   mixed        0.80  a compromise, so the flight is not laboured
+ *   flights only 1.00  a hop across a globe already reads unhurried
  */
-const pace = payload.pace ?? (hasGround ? 0.4 : 1);
+const pace = payload.pace ?? (hasGround ? (hasFlight ? 0.8 : 0.4) : 1);
 
 /** Dark Matter by default: satellite is TripTrail's own default and clashes
  *  with the site's dark theme. Any value from its style menu works. */
