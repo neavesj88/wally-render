@@ -76,6 +76,20 @@ function smoothCoords(coords) {
   return cur;
 }
 
+// Each leg is smoothed on its own. decimate() gives every leg the same point
+// budget regardless of length, so spacing can change 150-fold at a junction —
+// a drive at 40m per point meeting a flight at 6km per point. One window across
+// the join averages those together and the camera lurches at the handover.
+function smoothPerLeg(coords, legStart, legLen) {
+  const out = coords.map(c => c.slice());
+  for (let k = 0; k < legStart.length; k++) {
+    const from = legStart[k], len = legLen[k];
+    const seg = smoothCoords(coords.slice(from, from + len));
+    for (let i = 0; i < len; i++) out[from + i] = seg[i];
+  }
+  return out;
+}
+
 // Mirrors trailPointAt but reads the smoothed array. Shares anim.mcum, which is
 // valid because camCoords is index-aligned with fullCoords.
 function camPointAt(frac) {
@@ -97,7 +111,7 @@ patch(
   anim.mtotal = mcum[mcum.length - 1] || 1;`,
   `  anim.mcum = mcum;
   anim.mtotal = mcum[mcum.length - 1] || 1;
-  anim.camCoords = smoothCoords(anim.fullCoords);   // local patch: camera only`,
+  anim.camCoords = smoothPerLeg(anim.fullCoords, legStart, legLen);   // local patch: camera only`,
 );
 
 patch(

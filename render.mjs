@@ -26,17 +26,19 @@ const subtitle = payload.subtitle || "";
 // and right edges and reads as squashed — 16:9 gives the sphere room.
 const aspect = payload.aspect || "16:9";
 const hasFlight = stops.some(s => s.mode === "plane");
+const hasGround = stops.slice(1).some(s => s.mode !== "plane");
 const globe = payload.globe !== false && hasFlight;
 
 /**
  * Pace divides every segment duration, so lower is slower. The slider runs
- * 0.4–2.2 and TripTrail labels anything under 0.8 "Cinematic".
+ * 0.4-2.2 and TripTrail labels anything under 0.8 "Cinematic".
  *
- * Ground routes default slow: a road leg covers little distance, so at normal
- * pace the camera hurries through the bends. A flight crossing a globe already
- * reads unhurried, so those stay at 1.
+ * Keyed on ground legs, not flights. A short drive gets TripTrail's floor of
+ * 2200ms however far it goes, so at normal pace it is over in two seconds — and
+ * keying on flights meant one flight leg rushed every drive in the same trip.
+ * A flight rendered slowly just reads as cinematic, so erring slow is safe.
  */
-const pace = payload.pace ?? (hasFlight ? 1 : 0.45);
+const pace = payload.pace ?? (hasGround ? 0.4 : 1);
 
 /** Dark Matter by default: satellite is TripTrail's own default and clashes
  *  with the site's dark theme. Any value from its style menu works. */
