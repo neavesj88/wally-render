@@ -35,11 +35,11 @@ const globe = payload.globe !== false && hasFlight;
  *
  * TripTrail has one global pace, so a trip mixing modes cannot have both. The
  * three cases:
- *   ground only  0.40  drives need room; they are what looks rushed
+ *   ground only  0.55  drives need room; 0.4 overshot and dragged
  *   mixed        0.80  a compromise, so the flight is not laboured
  *   flights only 1.00  a hop across a globe already reads unhurried
  */
-const pace = payload.pace ?? (hasGround ? (hasFlight ? 0.8 : 0.4) : 1);
+const pace = payload.pace ?? (hasGround ? (hasFlight ? 0.8 : 0.55) : 1);
 
 /** Dark Matter by default: satellite is TripTrail's own default and clashes
  *  with the site's dark theme. Any value from its style menu works. */
